@@ -44,6 +44,9 @@ from lmcache.v1.memory_management import (
     MemoryObj,
     MemoryObjMetadata,
     PagedTensorMemoryAllocator,
+    _allocate_cpu_memory,
+    _allocate_gpu_memory,
+    _free_cpu_memory,
 )
 from lmcache.v1.storage_backend.abstract_backend import AllocatorBackendInterface
 from lmcache.v1.storage_backend.cache_policy import get_cache_policy
@@ -58,10 +61,12 @@ class NixlStorageConfig:
     pool_size: int
     buffer_device: str
     backend: str
+    use_direct_io: bool
     backend_params: dict[str, str]
     dynamic_storage: bool
     enable_presence_cache: bool
     enable_async_put: bool
+    use_direct_io: bool
     path: str
 
     @staticmethod
@@ -101,6 +106,8 @@ class NixlStorageConfig:
         assert backend is not None
 
         dynamic_storage = pool_size == 0
+        use_direct_io = extra_config.get("use_direct_io", False)
+        assert use_direct_io in [False, True]
 
         corrected_device = get_correct_device(
             config.nixl_buffer_device, metadata.worker_id
@@ -119,6 +126,7 @@ class NixlStorageConfig:
             dynamic_storage=dynamic_storage,
             enable_presence_cache=enable_presence_cache,
             enable_async_put=enable_async_put,
+            use_direct_io=use_direct_io,
             path=path,
         )
 
@@ -128,7 +136,6 @@ class NixlDescPool(ABC):
         self.lock = threading.Lock()
         self.size: int = size
         self.indices: List[int] = []
-
         self.indices.extend(reversed(range(size)))
 
     def get_num_available_descs(self) -> int:
@@ -151,16 +158,17 @@ class NixlDescPool(ABC):
 
 
 class NixlFilePool(NixlDescPool):
-    def __init__(self, size: int, path: str):
+    def __init__(self, size: int, path: str, use_direct_io: bool):
         super().__init__(size)
         self.fds: List[int] = []
 
         assert path is not None
 
+        flags = os.O_CREAT | os.O_RDWR | (os.O_DIRECT if use_direct_io else 0)
         for i in reversed(range(size)):
             filename = f"obj_{i}_{uuid.uuid4().hex[0:4]}.bin"
             tmp_path = os.path.join(path, filename)
-            fd = os.open(tmp_path, os.O_CREAT | os.O_RDWR)
+            fd = os.open(tmp_path, flags)
             self.fds.append(fd)
 
     def close(self):
@@ -627,7 +635,8 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         self.key_dict = self.cache_policy.init_mutable_mapping()
 
         self.pool = self.createPool(
-            nixl_config.backend, nixl_config.pool_size, nixl_config.path
+            nixl_config.backend, nixl_config.pool_size, nixl_config.path,
+            nixl_config.use_direct_io
         )
         assert self.pool is not None
 
@@ -640,9 +649,9 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         )
 
     @staticmethod
-    def createPool(backend: str, size: int, path: str):
+    def createPool(backend: str, size: int, path: str, use_direct_io: bool):
         if backend in ("GDS", "GDS_MT", "POSIX", "HF3FS"):
-            return NixlFilePool(size, path)
+            return NixlFilePool(size, path, use_direct_io)
         elif backend in ("OBJ"):
             return NixlObjectPool(size)
         else:

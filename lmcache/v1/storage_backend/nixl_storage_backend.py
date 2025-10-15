@@ -66,7 +66,7 @@ class NixlStorageConfig:
     @staticmethod
     def validate_nixl_backend(backend: str, device: str):
         if backend in ("GDS", "GDS_MT"):
-            return device == "cpu" or device == "cuda"
+            return device == "cpu" or device.startswith("cuda")
         elif backend in ("POSIX", "HF3FS", "OBJ"):
             return device == "cpu"
         else:

@@ -844,6 +844,23 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         self.pool.push(metadata.index)
         return True
 
+    async def batched_async_contains(
+        self,
+        lookup_id: str,
+        keys: list[CacheEngineKey],
+        pin: bool = False,
+    ) -> int:
+        num_hit_counts = 0
+        with self.key_lock:
+            for key in keys:
+                if key not in self.key_dict:
+                    return num_hit_counts
+                if pin:
+                    self.key_dict[key].pin()
+                num_hit_counts += 1
+
+        return num_hit_counts
+
     def pin(self, key: CacheEngineKey) -> bool:
         with self.key_lock:
             if key in self.key_dict:

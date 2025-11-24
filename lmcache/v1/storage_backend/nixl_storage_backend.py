@@ -708,7 +708,7 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             self.add_key_to_dict(keys[i], mem_objs[i].meta, index)
 
         handle = self.agent.get_mem_to_storage_handle(mem_indices, storage_indices)
-        self.agent.post_blocking(handle)
+        await asyncio.to_thread(self.agent.post_blocking, handle)
         self.agent.release_handle(handle)
 
         for key in keys:
@@ -767,7 +767,7 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             return obj_list
 
         handle = self.agent.get_storage_to_mem_handle(mem_indices, storage_indices)
-        self.agent.post_blocking(handle)
+        await asyncio.to_thread(self.agent.post_blocking, handle)
         self.agent.release_handle(handle)
 
         return obj_list

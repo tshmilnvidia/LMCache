@@ -443,9 +443,13 @@ class GdsBackend(AllocatorBackendInterface):
         transfer_spec: Any = None,
     ) -> Union[List[Future], None]:
         futures = []
+        start_time = time.time()
         for key, memory_obj in zip(keys, memory_objs, strict=False):
             future = self.submit_put_task(key, memory_obj)
             futures.append(future)
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"batched_submit_put_task loop time: {duration:.6f} seconds")
         return futures
 
     async def _async_save_bytes_to_disk(
@@ -456,6 +460,7 @@ class GdsBackend(AllocatorBackendInterface):
         """
         Convert KV to bytes and async store bytes to disk.
         """
+        start_time = time.time()
         kv_chunk = memory_obj.tensor
         assert kv_chunk is not None
         path, subdir_key, l1_dir, l2_dir = self._key_to_path(key)
@@ -476,6 +481,9 @@ class GdsBackend(AllocatorBackendInterface):
             self.cufile_base_pointer,
             memory_obj.metadata.address,
         )
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"_async_save_bytes_to_disk await time: {duration:.6f} seconds")
 
         logger.debug(
             f"Saved {kv_chunk.numel()} elements of {kv_chunk.dtype} "
@@ -552,7 +560,7 @@ class GdsBackend(AllocatorBackendInterface):
         dtype = entry.dtype
         shape = entry.shape
         fmt = entry.fmt
-        logger.warning(entry)
+        #logger.warning(entry)
         assert dtype is not None
         assert shape is not None
         assert fmt is not None

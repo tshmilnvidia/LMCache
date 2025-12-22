@@ -708,7 +708,11 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             self.add_key_to_dict(keys[i], mem_objs[i].meta, index)
 
         handle = self.agent.get_mem_to_storage_handle(mem_indices, storage_indices)
+        start_time = time.time()
         await asyncio.to_thread(self.agent.post_blocking, handle)
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"mem_to_storage await time: {duration:.6f} seconds")
         self.agent.release_handle(handle)
 
         for key in keys:
@@ -815,6 +819,8 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         memory_objs: List[MemoryObj],
         transfer_spec: Any = None,
     ) -> None:
+
+        start_time = time.time()
         with self.key_lock:
             available_descs = self.pool.get_num_available_descs()
             num_evict = len(keys) - available_descs
@@ -831,9 +837,17 @@ class NixlStaticStorageBackend(NixlStorageBackend):
 
                 self.batched_remove(evict_keys, force=False)
 
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"batched_submit_put_task eviction time: {duration:.6f} seconds")
+
+        start_time = time.time()
         with self.progress_lock:
             for key in keys:
                 self.progress_set.add(key)
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"batched_submit_put_task progress time: {duration:.6f} seconds")
 
         asyncio.run_coroutine_threadsafe(
             self.mem_to_storage(keys, memory_objs), self.loop

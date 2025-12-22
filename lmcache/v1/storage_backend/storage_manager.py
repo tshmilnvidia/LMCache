@@ -17,6 +17,7 @@ from typing import (
 import asyncio
 import functools
 import threading
+import time
 
 # Third Party
 import torch
@@ -85,6 +86,9 @@ def allocate_and_copy_objects(
     for key, src_memory_obj in zip(keys, src_memory_objs, strict=False):
         if allocator_backend.contains(key):
             continue
+            logger.info("Contains True")
+        logger.info("Allocating")
+        t = time.perf_counter()
         memory_obj = allocator_backend.allocate(
             src_memory_obj.get_shape(),
             src_memory_obj.get_dtype(),
@@ -92,15 +96,23 @@ def allocate_and_copy_objects(
             eviction=True,
             busy_loop=False,
         )
+        alloc_time = time.perf_counter() - t
+        logger.info(f"allocate_and_copy_objects alloc time: {alloc_time:.6f} seconds")
 
         if memory_obj is None or memory_obj.tensor is None:
             break
 
         with torch.cuda.stream(stream):
+            t = time.perf_counter()
             memory_obj.tensor.copy_(src_memory_obj.tensor, non_blocking=True)
+            copy_time = time.perf_counter() - t
+            logger.info(f"allocate_and_copy_objects copy time: {copy_time:.6f} seconds")
         allocated_objects.append(memory_obj)
 
+    t = time.perf_counter()
     stream.synchronize()
+    sync_time = time.perf_counter() - t
+    logger.info(f"allocate_and_copy_objects sync time: {sync_time:.6f} seconds")
     return keys[: len(allocated_objects)], allocated_objects
 
 
@@ -404,15 +416,22 @@ class StorageManager:
             allocator_backend = backend.get_allocator_backend()
             cname = get_backend_cname(allocator_backend)
             if cname not in obj_dict:
+                t = time.perf_counter()
                 new_keys, new_objs = allocate_and_copy_objects(
                     allocator_backend, keys, memory_objs, self.internal_copy_stream
                 )
+                alloc_time = time.perf_counter() - t
+                logger.info(f"batched_put alloc time: {alloc_time:.6f} seconds")
                 obj_dict[cname] = (new_keys, new_objs)
+
 
             # NOTE: the handling of exists_in_put_tasks
             # is done in the backend
             ks, objs = obj_dict[cname]
+            t = time.perf_counter()
             backend.batched_submit_put_task(ks, objs, transfer_spec=transfer_spec)
+            put_time = time.perf_counter() - t
+            logger.info(f"batched_put put time: {put_time:.6f} seconds")
 
         for cname, (ks, objs) in obj_dict.items():
             for memory_obj in objs:

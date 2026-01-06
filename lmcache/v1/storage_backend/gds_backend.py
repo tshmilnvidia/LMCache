@@ -381,13 +381,18 @@ class GdsBackend(AllocatorBackendInterface):
 
     def contains(self, key: CacheEngineKey, pin: bool = False) -> bool:
         # TODO: implement pin() semantics
+        flag = False
         with self.hot_lock:
             res = key in self.hot_cache
         if res:
-            return True
-        if self._try_to_read_metadata(key):
-            return True
-        return False
+            flag = True
+        elif self._try_to_read_metadata(key):
+            flag = True
+        else:
+            flag = False
+
+        logger.info(f"contains return {flag}")
+        return flag
 
     def _try_to_read_metadata(self, key: CacheEngineKey) -> Optional[DiskCacheMetadata]:
         path, subdir_key, _, _ = self._key_to_path(key)

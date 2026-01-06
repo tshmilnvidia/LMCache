@@ -795,13 +795,18 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         :return: True if the key exists, False otherwise
         """
 
+        flag = False
+
         with self.key_lock:
             if key in self.key_dict:
                 if pin:
                     self.key_dict[key].pin()
-                return True
+                flag = True
             else:
-                return False
+                flag = False
+
+        logger.info(f"contains return {flag}")
+        return flag
 
     def exists_in_put_tasks(self, key: CacheEngineKey) -> bool:
         """
@@ -810,8 +815,11 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         :param key: The key to check
         :return: True if the key exists in put tasks, False otherwise
         """
+
         with self.progress_lock:
-            return key in self.progress_set
+            flag = key in self.progress_set
+            logger.info(f"exists_in_put_tasks return {flag}")
+            return flag
 
     def batched_submit_put_task(
         self,

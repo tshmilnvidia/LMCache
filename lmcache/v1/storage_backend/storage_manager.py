@@ -84,7 +84,11 @@ def allocate_and_copy_objects(
     """
     allocated_objects = []
     for key, src_memory_obj in zip(keys, src_memory_objs, strict=False):
-        if allocator_backend.contains(key):
+        t = time.perf_counter()
+        b = allocator_backend.contains(key)
+        contain_time = time.perf_counter() - t
+        logger.info(f"contain time: {contain_time:.6f} seconds")
+        if b:
             continue
             logger.info("Contains True")
         logger.info("Allocating")
@@ -805,7 +809,12 @@ class StorageManager:
             # NOTE(Jiayi): We do not pin for PDBackend
             pin_in_backend = pin if backend_name != "PDBackend" else False
 
-            if backend.contains(key, pin_in_backend):
+            t = time.perf_counter()
+            b = back.contains(key, pin_in_backend)
+            contain_time = time.perf_counter() - t
+            logger.info(f"contain time: {contain_time:.6f} seconds")
+
+            if b:
                 return backend_name
 
         return None

@@ -4,7 +4,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Generator, Optional, Union
+import time
 import os
+
 
 # Third Party
 from vllm.config import (
@@ -74,6 +76,8 @@ from lmcache.v1.lookup_client.lmcache_async_lookup_client import (
 from lmcache.v1.offload_server.zmq_server import ZMQOffloadServer
 from lmcache.v1.plugin.runtime_plugin_launcher import RuntimePluginLauncher
 from lmcache.v1.xpu_connector import VLLMPagedMemXPUConnectorV2
+
+logger = init_logger(__name__)
 
 if TYPE_CHECKING:
     # Third Party
@@ -1366,6 +1370,7 @@ class LMCacheConnectorV1Impl:
                     store_mask = store_mask[:aligned_token_len]
                     slot_mapping = slot_mapping[:aligned_token_len]
 
+            t = time.perf_counter()
             self.lmcache_engine.store(
                 token_ids,
                 mask=store_mask,
@@ -1376,6 +1381,8 @@ class LMCacheConnectorV1Impl:
                 request_configs=request.request_configs,
                 req_id=request.req_id,
             )
+            store_time = time.perf_counter() - t
+            logger.info(f"store time = {store_time:.6f}")
 
             # Update skip_leading_tokens only on last rank to ensure
             # each PP stage stores its own KV cache

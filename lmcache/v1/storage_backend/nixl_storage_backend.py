@@ -719,6 +719,9 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             with self.progress_lock:
                 self.progress_set.discard(key)
 
+        for mem_obj in mem_objs:
+            mem_obj.ref_count_down()
+
     def _collect_metadata_with_lock(
         self, keys: list[CacheEngineKey]
     ) -> list[Optional[NixlKeyMetadata]]:
@@ -856,6 +859,9 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         end_time = time.time()
         duration = end_time - start_time
         logger.info(f"batched_submit_put_task progress time: {duration:.6f} seconds")
+
+        for obj in memory_objs:
+            obj.ref_count_up()
 
         asyncio.run_coroutine_threadsafe(
             self.mem_to_storage(keys, memory_objs), self.loop

@@ -696,7 +696,23 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             )
             self.cache_policy.update_on_put(key)
 
-    async def mem_to_storage(
+    def foo(self, mem_indices, storage_indices):
+        handle = self.agent.get_mem_to_storage_handle(mem_indices, storage_indices)
+        self.agent.post_blocking(handle)
+        self.agent.release_handle(handle)
+
+    async def _agent_mem_to_storage(self, mem_indices, storage_indices, keys):
+        await asyncio.to_thread(foo, mem_indices, storage_indices)
+        for key in keys:
+            with self.progress_lock:
+                self.progress_set.discard(key)
+
+    def _agent_storage_to_mem(self, mem_indices, storage_indices):
+        handle = self.agent.get_storage_to_mem_handle(mem_indices, storage_indices)
+        self.agent.post_blocking(handle)
+        self.agent.release_handle(handle)
+
+    def mem_to_storage(
         self, keys: Sequence[CacheEngineKey], mem_objs: List[MemoryObj]
     ) -> None:
         mem_indices = [mem_obj.meta.address for mem_obj in mem_objs]
@@ -707,13 +723,11 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             storage_indices.append(index)
             self.add_key_to_dict(keys[i], mem_objs[i].meta, index)
 
-        handle = self.agent.get_mem_to_storage_handle(mem_indices, storage_indices)
-        self.agent.post_blocking(handle)
-        self.agent.release_handle(handle)
+        asyncio.run_coroutine_threadsafe(self._agent_mem_to_storage(mem_indices, storage_indices, keys), self.loop)
 
-        for key in keys:
-            with self.progress_lock:
-                self.progress_set.discard(key)
+        #for key in keys:
+        #    with self.progress_lock:
+        #        self.progress_set.discard(key)
 
     def _collect_metadata_with_lock(
         self, keys: list[CacheEngineKey]
@@ -766,9 +780,7 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         if not mem_indices:
             return obj_list
 
-        handle = self.agent.get_storage_to_mem_handle(mem_indices, storage_indices)
-        self.agent.post_blocking(handle)
-        self.agent.release_handle(handle)
+        await asyncio.to_thread(self._agent_storage_to_mem,  mem_indices, storage_indices)
 
         return obj_list
 
@@ -835,9 +847,11 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             for key in keys:
                 self.progress_set.add(key)
 
-        asyncio.run_coroutine_threadsafe(
-            self.mem_to_storage(keys, memory_objs), self.loop
-        )
+        #asyncio.run_coroutine_threadsafe(
+        #    self.mem_to_storage(keys, memory_objs), self.loop
+        #)
+
+        self.mem_to_storage(keys, memory_objs)
 
     def get_blocking(self, key: CacheEngineKey) -> Optional[MemoryObj]:
         """

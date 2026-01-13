@@ -467,6 +467,7 @@ class GdsBackend(AllocatorBackendInterface):
             self.metadata_dirs.add(subdir_key)
         tmp = ".tmp" + rand_suffix(self.rand, 8)
         fmt = memory_obj.metadata.fmt
+        t = time.perf_counter()
         metadata = await asyncio.to_thread(
             self._save_gds,
             path,
@@ -476,6 +477,8 @@ class GdsBackend(AllocatorBackendInterface):
             self.cufile_base_pointer,
             memory_obj.metadata.address,
         )
+        duration = time.perf_counter() - t
+        logger.info(f"_save_gds took {duration:.6f} seconds")
 
         logger.debug(
             f"Saved {kv_chunk.numel()} elements of {kv_chunk.dtype} "

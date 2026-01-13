@@ -658,7 +658,7 @@ class NixlStaticStorageBackend(NixlStorageBackend):
 
         self.cache_policy = get_cache_policy(config.cache_policy)
         self.key_dict = self.cache_policy.init_mutable_mapping()
-        self.nixl_executor = long_task_executor = ThreadPoolExecutor(max_workers=8)
+        self.sem = asyncio.Semaphore(2)
 
         self.pool = self.createPool(
             nixl_config.backend,
@@ -709,8 +709,10 @@ class NixlStaticStorageBackend(NixlStorageBackend):
         self.agent.release_handle(handle)
 
     async def _async_mem_to_storage(self, mem_indices, storage_indices, keys):
-        await asyncio.get_running_loop().run_in_executor(self.nixl_executor, self._agent_mem_to_storage, mem_indices, storage_indices)
-        #await asyncio.to_thread(self._agent_mem_to_storage, mem_indices, storage_indices)
+        t = time.perf_counter()
+        await asyncio.to_thread(self._agent_mem_to_storage, mem_indices, storage_indices)
+        t = time.perf_counter() - t
+        logger.info(f"NIXL took {t:.6f} seconds")
         for key in keys:
             with self.progress_lock:
                 self.progress_set.discard(key)

@@ -696,9 +696,9 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             )
             self.cache_policy.update_on_put(key)
 
-    async def mem_to_storage(
+    def mem_to_storage(
         self, keys: Sequence[CacheEngineKey], mem_objs: List[MemoryObj]
-    ) -> None:
+    ) -> asyncio.Future:
         mem_indices = [mem_obj.meta.address for mem_obj in mem_objs]
 
         storage_indices = []
@@ -707,10 +707,14 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             storage_indices.append(index)
             self.add_key_to_dict(keys[i], mem_objs[i].meta, index)
 
+        # Run the blocking operations in a separate thread
+        future = asyncio.to_thread(self._blocking_transfer, mem_indices, storage_indices, keys)
+        return future
+
+    def _blocking_transfer(self, mem_indices: list[int], storage_indices: list[int], keys: Sequence[CacheEngineKey]):
         handle = self.agent.get_mem_to_storage_handle(mem_indices, storage_indices)
         self.agent.post_blocking(handle)
         self.agent.release_handle(handle)
-
         for key in keys:
             with self.progress_lock:
                 self.progress_set.discard(key)
@@ -835,9 +839,7 @@ class NixlStaticStorageBackend(NixlStorageBackend):
             for key in keys:
                 self.progress_set.add(key)
 
-        asyncio.run_coroutine_threadsafe(
-            self.mem_to_storage(keys, memory_objs), self.loop
-        )
+        self.mem_to_storage(keys, memory_objs)
 
     def get_blocking(self, key: CacheEngineKey) -> Optional[MemoryObj]:
         """
